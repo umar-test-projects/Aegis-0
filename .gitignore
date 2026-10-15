@@ -1,0 +1,24 @@
+# Python environments and generated files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Local configuration and runtime data
+.env
+.env.*
+!.env.example
+*.log
+*.rdb
+appendonlydir/
+
+# Workspace-only directories
+library-files/
+scratch/
+shared/
