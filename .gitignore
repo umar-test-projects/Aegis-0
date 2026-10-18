@@ -25,3 +25,6 @@ shared/
 
 # Local video exports; public demo is linked in README
 submission/
+
+# Keep coding-agent instructions local
+/AGENTS.md
