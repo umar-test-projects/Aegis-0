@@ -10,6 +10,7 @@ from aegis_falkordb_engine import AegisGraphEngine
 from aegis_company_brain import EXAMPLES, SCHEMA_URI, query_company_brain
 from aegis_webhook_listener import AUTHORS, ingest_slack_message
 from aegis_vector_rag_baseline import DEFAULT_QUERY, run_side_by_side_benchmark
+from aegis_recovery_panel import render_recovery_panel
 from aegis_compliance_report import (
     build_compliance_report, fetch_handoff_provenance, utc_now,
 )
@@ -36,11 +37,15 @@ st.markdown(
 
 @st.cache_resource
 def get_engine() -> AegisGraphEngine:
-    return AegisGraphEngine(
+    graph_engine = AegisGraphEngine(
         host=os.getenv("FALKORDB_HOST", "localhost"),
         port=int(os.getenv("FALKORDB_PORT", 6379)),
         password=os.getenv("FALKORDB_PASSWORD", None),
     )
+    if os.getenv("AEGIS_GRAPH_NAME"):
+        graph_engine.main_graph_name = os.environ["AEGIS_GRAPH_NAME"]
+        graph_engine.graph = graph_engine.db.select_graph(graph_engine.main_graph_name)
+    return graph_engine
 
 
 engine = get_engine()
@@ -274,6 +279,7 @@ with st.sidebar:
         st.session_state.chaos_event = None
         st.session_state.company_brain_history = []
         st.session_state.last_slack_ingestion = None
+        st.session_state.measured_recovery_result = None
         st.toast("Tri-Layer Universe freshly seeded in FalkorDB!", icon="✅")
         st.rerun()
 
@@ -375,6 +381,9 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+render_recovery_panel(engine)
+st.divider()
+st.caption("Graph state below includes modeled dependency-path checks. Use measured recovery above for local HTTP evidence.")
 metrics = fetch_live_pipeline_metrics("pipeline_eu_payments")
 
 if metrics:
@@ -534,7 +543,7 @@ with col_trace:
     tab_sim, tab_rag, tab_cypher = st.tabs(
         [
             "🧪 Shadow-Graph Audit Log",
-            "⚔️ Why Vector RAG Fails Here",
+            "Policy lineage illustration",
             "📜 Live Cypher Provenance",
         ]
     )
@@ -601,12 +610,13 @@ with col_trace:
                 st.json(out)
 
     with tab_rag:
-        st.markdown("#### Standard Vector RAG vs. Aegis-0 FalkorDB GraphRAG")
+        st.markdown("#### Policy lineage: lexical retrieval and graph verification")
         st.caption(
             "Text-only demo: TF-IDF vectors with cosine similarity over the two seeded "
             "Jira/Slack summaries. Aegis queries the live graph and checks US failover "
             "in an ephemeral shadow graph. No production route is changed."
         )
+        st.caption("These are different tasks: your query affects lexical scoring; the graph always checks the EU payments pipeline. This is not a general RAG accuracy or speed benchmark.")
         benchmark_query = st.text_input("Incident retrieval query", value=DEFAULT_QUERY)
         if st.button("Run Side-by-Side Benchmark", disabled=not benchmark_query.strip()):
             st.session_state.rag_benchmark = None

@@ -10,6 +10,8 @@ from mcp.types import ToolAnnotations
 
 from aegis_falkordb_engine import AegisGraphEngine
 from aegis_company_brain import company_brain_schema, query_company_brain
+from aegis_recovery import RecoveryCoordinator
+from aegis_runtime import RuntimeClient
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,6 +40,65 @@ engine = AegisGraphEngine(
     port=FALKORDB_PORT,
     password=FALKORDB_PASSWORD,
 )
+if os.getenv("AEGIS_GRAPH_NAME"):
+    engine.main_graph_name = os.environ["AEGIS_GRAPH_NAME"]
+    engine.graph = engine.db.select_graph(engine.main_graph_name)
+
+
+def local_recovery():
+    return RecoveryCoordinator(engine, RuntimeClient(
+        os.getenv("AEGIS_RUNTIME_URL", "http://127.0.0.1:8787"),
+        os.getenv("AEGIS_RUNTIME_TOKEN"),
+    ))
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False))
+def observe_local_runtime(pipeline_id: str = "pipeline_eu_payments") -> Dict[str, Any]:
+    """Measure real HTTP requests to the configured loopback synthetic router."""
+    coordinator = local_recovery()
+    return {"runtime": coordinator.runtime.snapshot(), "observation": coordinator.runtime.measure(),
+            "sla_limit_ms": coordinator._sla_limit(pipeline_id), "scope": "synthetic local gateway HTTP"}
+
+
+@mcp.tool()
+def propose_local_recovery(pipeline_id: str, playbook_id: str) -> Dict[str, Any]:
+    """Planner: persist a proposal, baseline HTTP observations and router revision."""
+    return local_recovery().propose(pipeline_id, playbook_id)
+
+
+@mcp.tool()
+def audit_local_recovery(action_id: str) -> Dict[str, Any]:
+    """RiskAuditor: independently load a proposal, run a shadow graph, persist approval/rejection."""
+    return local_recovery().audit(action_id)
+
+
+@mcp.tool()
+def execute_local_recovery(action_id: str) -> Dict[str, Any]:
+    """Executor: claim a fresh approval, change local routing and verify HTTP before learning.
+
+    Reusing the action ID resumes persisted work. Failed checks disable the demo
+    router. This tool never changes real production infrastructure.
+    """
+    return local_recovery().execute(action_id)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False))
+def get_local_recovery(action_id: str) -> Dict[str, Any]:
+    """Read a persisted action, phase trace, audit and HTTP evidence after a worker restart."""
+    return RecoveryCoordinator(engine, None).get(action_id)
+
+
+@mcp.prompt()
+def verified_local_incident_triage() -> str:
+    return (
+        "Observe local runtime first. If errors are zero and measured p95 is within the SLA, stop. "
+        "Otherwise recall_procedural_playbooks; for each graph-ranked playbook call "
+        "propose_local_recovery and audit_local_recovery. Execute only an APPROVED action "
+        "using execute_local_recovery. Stop on VERIFIED, FAILED or STALE. If every proposal "
+        "is REJECTED, report BLOCKED with policy evidence. A second worker can resume by "
+        "reading get_local_recovery and executing its approved action ID. Report predicted "
+        "and measured latency separately; the owner is identified, not messaged."
+    )
 
 
 @mcp.resource("falkordb://aegis/schema")

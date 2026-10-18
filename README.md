@@ -1,9 +1,163 @@
-# Aegis-0
+# Aegis-0 — graph-checked incident recovery
 
-A FalkorDB governance and self-healing demo combining service dependency
-analysis, ephemeral shadow simulations, policy lineage, and procedural memory.
-Includes a Streamlit dashboard, MCP server, Slack webhook listener, and
-Markdown audit evidence export.
+Aegis checks recovery playbooks against current company decisions and service
+dependencies in FalkorDB, tests each candidate in an ephemeral shadow graph,
+executes an approved route against local HTTP services, and measures the result
+before recording success. Failed verification disables the local demo router.
+
+**Hackathon tracks:** Track 01: Agents That Act on Connected Data (primary);
+Track 02: Agent Memory and Coordination; Track 03: Company Brain.
+
+The executable agent is a bounded MCP client. Planner, auditor and executor are
+independently callable phases that share persisted graph state; they are not
+three independently reasoning LLMs. No model API key is required.
+
+## Start with the measured demo
+
+With Python 3.10+ and Docker installed, on Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+docker compose up -d --wait
+.\.venv\Scripts\python.exe aegis_demo.py --reset --seed-only
+$env:AEGIS_GRAPH_NAME = 'aegis_demo_verified'
+.\.venv\Scripts\python.exe -m streamlit run aegis_dashboard.py
+```
+
+On macOS/Linux, use `.venv/bin/python` in place of `.venv\Scripts\python.exe`.
+The CLI uses the dedicated `aegis_demo_verified` graph and persistent simulator
+receipts in `scratch/demo-runtime.json`. Its reset guard refuses production graph
+names. It never sends a Slack notification or changes real infrastructure.
+
+For a complete headless run with exported observations, use
+`python aegis_demo.py --reset --output scratch/recovery.json` inside your Python
+environment. Reset the measured dashboard incident before recording its first run.
+
+In the dashboard, click **Start measured services**, then **Run measured
+recovery**. Watch the MCP tool calls: the fast US route is rejected by the current
+policy, the EU route is approved, routing changes, and actual HTTP samples are
+shown. **Prepare handoff** stops after approval. Update a company policy using
+the sidebar, then **Execute / resume handoff** to demonstrate stale approval
+refusal. **Reset graph + local incident** clears graph history explicitly.
+
+Predicted dependency-path latency and observed router/gateway HTTP p95 are
+separate measurements. Three HTTP samples are a small local demonstration, not
+a production SLA or load benchmark. `DataPipeline.latency_ms` remains the graph
+model; `observed_gateway_p95_ms` stores the actual local observation.
+
+## Run an agent and independent executor over MCP
+
+Seed the dedicated graph:
+
+```powershell
+.\.venv\Scripts\python.exe aegis_demo.py --reset --seed-only
+$env:AEGIS_GRAPH_NAME = 'aegis_demo_verified'
+$env:AEGIS_RUNTIME_URL = 'http://127.0.0.1:8787'
+$env:AEGIS_RUNTIME_TOKEN = [guid]::NewGuid().ToString('N')
+.\.venv\Scripts\python.exe aegis_runtime.py --port 8787
+```
+
+Keep that runtime process running. In a second terminal, set the same three
+environment variables, then run:
+
+```powershell
+.\.venv\Scripts\python.exe aegis_agent.py --stop-after-approval
+.\.venv\Scripts\python.exe aegis_agent.py --resume ACTION_ID
+```
+
+Use the `action_id` returned by the first command. Each command starts a fresh
+MCP server process. Proposal, independent shadow audit, executor claim, HTTP
+receipt and observations persist in FalkorDB. To complete all phases in one run,
+omit `--stop-after-approval`. A healthy runtime stops before proposing a repair;
+an all-rejected incident reports `BLOCKED` without changing the route.
+
+Available tools: `observe_local_runtime`, `recall_procedural_playbooks`,
+`propose_local_recovery`, `audit_local_recovery`, `execute_local_recovery`,
+`get_local_recovery`. Endpoint and token come from server environment, never
+from an agent-supplied destination URL. The control API accepts literal loopback
+origins only and requires a bearer token.
+
+## Graph data model
+
+```mermaid
+graph LR
+    Person -->|AUTHORED| Decision
+    NewDecision -->|SUPERSEDES| Decision
+    Decision -->|GOVERNS| Pipeline
+    Person -->|OWNS| Pipeline
+    Service -->|DEPENDS_ON| Pipeline
+    Checkout -->|DEPENDS_ON| Service
+    Checkout -->|BOUND_BY| SLA
+    Pipeline -->|ROUTES_THROUGH| Gateway
+    Gateway -->|LOCATED_IN| Region
+    Playbook -->|APPLIES_TO| Pipeline
+    Planner -->|PROPOSED_RECOVERY| RecoveryAction
+    Auditor -->|UPDATED_RECOVERY| RecoveryAction
+    Executor -->|CLAIMED_RECOVERY| RecoveryAction
+    RecoveryAction -->|USES_PLAYBOOK| Playbook
+    RecoveryAction -->|RECOVERS| Pipeline
+    Episode -->|USED_PLAYBOOK| Playbook
+    Playbook -->|HAS_CONTEXT| PlaybookContext
+    Playbook -->|WEIGHT_UPDATED| PlaybookWeightEvent
+```
+
+`RecoveryAction` stores the durable phase, audit input snapshot, runtime identity
+and revision, before/after observations and decision trace. `RecoveryLease`
+serializes competing actions for one pipeline. Active policies exclude decisions
+with incoming `SUPERSEDES` edges. Dependency traversal is bounded to four hops.
+Core Cypher lives in `aegis_falkordb_engine.py` and `aegis_recovery.py`; schema and
+read queries are in `aegis_company_brain.py`.
+
+`FINALIZING` and `STOPPING` fence success and compensation with action versions.
+An outdated worker cannot disable a recovery that another worker verified. A
+restarted executor can resume either phase using the same action ID.
+
+## Reproduce the evaluation
+
+See [the recorded local evaluation](docs/evaluation-results.md): 161 tests passed
+and 8/8 disclosed evaluation scenarios passed on 18 October 2026.
+
+```powershell
+.\.venv\Scripts\python.exe aegis_demo.py --evaluate --output scratch/evaluation.json
+$env:AEGIS_TEST_FALKORDB = '1'
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+The evaluation runs eight disclosed synthetic scenarios: recovery, stale policy,
+all candidates blocked, failed gateway, interrupted executor, duplicate
+execution, policy change during execution, and memory enabled/disabled on a
+repeated fixture. Each case uses a unique disposable graph, exports complete
+evidence, and deletes only that graph. It exits nonzero if any case fails.
+Actual latency values depend on the machine. The memory comparison counts
+candidate attempts, not a general improvement in recovery time.
+
+HTTP and graph updates cannot form one distributed transaction. Freshness is
+checked before dispatch, after observation, and atomically at graph commit.
+A policy change during the HTTP action can briefly leave the local route applied;
+the controller disables it when detected and records `STALE`. Runtime receipts
+allow a restarted executor to discover an already-applied effect. If the runtime
+is unavailable, compensation is recorded as incomplete. Resume pending work
+against the same persisted runtime identity. Keep FalkorDB running to retain graph
+memory; the current Compose setup does not promise persistence after container
+removal.
+
+The original dashboard shadow-triage and legacy commit tool are **graph-only,
+model-based demonstrations**. Their projected success must not be presented as
+measured service recovery. Their episodes carry `model_projection` evidence;
+verified local executions carry `loopback_http` evidence and an action ID.
+
+## Submission evidence
+
+See [the four-minute recording guide](docs/demo-script.md). Record the working
+project and add its video link to your submission. No demo video or public
+deployment is claimed by this repository. The permitted source corpus and all
+infrastructure/people/policy fixtures in this demo are synthetic.
+
+**AI assistance disclosure:** The verified local recovery increment was developed
+with OpenAI Codex assistance, including implementation, tests and documentation.
+Participants should review the code and be able to explain its architecture,
+graph queries, boundaries and evaluation results.
 
 ## Setup and tests
 
@@ -50,7 +204,7 @@ AEGIS_TEST_FALKORDB=1 pytest -v
 
 ## Live Vector RAG comparison
 
-In **⚔️ Why Vector RAG Fails Here**, click **Run Side-by-Side Benchmark**.
+In **Policy lineage illustration**, click **Run Side-by-Side Benchmark**.
 The default incident query ranks the raw Jira `DEC-2026-101` US failover summary
 above Slack `DEC-2026-409` using local TF-IDF/cosine similarity. The graph side
 executes the engine's live `SUPERSEDES`-filtered retrieval, then verifies the US
@@ -199,7 +353,8 @@ content fails. The listener uses the same `FALKORDB_HOST`, `FALKORDB_PORT`, and
 Every rejected Shadow-Graph simulation now records a `RejectedEpisode` through
 `(RiskAuditor)-[:RECORDED]->(RejectedEpisode)-[:USED_PLAYBOOK]->(Playbook)`, including
 the rejection reasons, shadow graph ID, incident ID, and governing decisions.
-This happens after sandbox cleanup, for dashboard, MCP, CLI, and benchmark calls.
+This happens after sandbox cleanup for incident simulations in dashboard, MCP
+and CLI calls. The policy-lineage illustration explicitly disables learning.
 Pass `playbook_id` to identify the attempted playbook; when omitted, matching
 playbooks for the pipeline and candidate route are inferred. Passing the same
 report again to `record_rejected_episode` does not apply a second penalty.
@@ -222,8 +377,8 @@ every five seconds. The line chart uses persisted `PlaybookWeightEvent` history
 grouped by incident, and the bar chart shows both playbooks' current-context
 weights. Its journal includes context IDs and policy decision IDs. Dashboard
 triage groups related attempts under one incident ID; chart refreshes and ordinary
-page reruns do not create training events. The side-by-side benchmark does run a
-new simulation and therefore records a rejection when the US route is blocked.
+page reruns do not create training events. The side-by-side lineage illustration
+runs a simulation with learning disabled, so viewing it does not change weights.
 
 To see both weights decay across runs, inject the throughput-spike scenario and
 run triage repeatedly. To see successful learning and candidate reordering, reset

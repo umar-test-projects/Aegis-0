@@ -65,8 +65,8 @@ def run_side_by_side_benchmark(engine, query=DEFAULT_QUERY):
     """Measure retrieval separately from the US counterfactual safety check.
 
     Index construction is excluded; the graph timing includes a database round
-    trip. No production route mutation or handoff is performed. Rejections update
-    RiskAuditor procedural memory, as for every simulation. The engine deletes the
+    trip. No production route mutation, handoff or learning update is performed.
+    This illustration is not an incident observation. The engine deletes the
     ephemeral shadow graph after simulation as in normal triage.
     """
     baseline = VectorRAGBaseline()
@@ -84,7 +84,7 @@ def run_side_by_side_benchmark(engine, query=DEFAULT_QUERY):
     if us_candidate:
         started = perf_counter()
         simulation = engine.run_shadow_graph_simulation(
-            "pipeline_eu_payments", "svc_us_failover_fast"
+            "pipeline_eu_payments", "svc_us_failover_fast", record_rejection=False,
         )
         simulation_ms = (perf_counter() - started) * 1000
     return {

@@ -29,10 +29,11 @@ def company_brain_schema(graph_name):
                 "edges": ["ROUTES_THROUGH", "CANDIDATE_FAILOVER", "LOCATED_IN", "DEPENDS_ON", "BOUND_BY"],
             },
             "Layer_C_Agent_Memory_Track2": {
-                "nodes": ["Agent", "Playbook", "Episode", "RejectedEpisode", "PlaybookContext", "PlaybookWeightEvent", "HandoffLock"],
+                "nodes": ["Agent", "Playbook", "Episode", "RejectedEpisode", "PlaybookContext", "PlaybookWeightEvent", "HandoffLock", "RecoveryAction", "RecoveryLease"],
                 "edges": ["RECORDED", "USED_PLAYBOOK", "APPLIES_TO", "INITIATED_HANDOFF",
                           "VERIFIED_HANDOFF", "AUTHORIZED_EXECUTION", "HAS_CONTEXT", "IN_CONTEXT",
-                          "EVALUATED_UNDER", "UNDER_POLICY", "WEIGHT_UPDATED", "FROM_EPISODE"],
+                          "EVALUATED_UNDER", "UNDER_POLICY", "WEIGHT_UPDATED", "FROM_EPISODE",
+                          "PROPOSED_RECOVERY", "UPDATED_RECOVERY", "CLAIMED_RECOVERY", "USES_PLAYBOOK", "RECOVERS"],
             },
         },
         "company_brain_properties": {
@@ -100,7 +101,7 @@ def plan_company_brain_question(question, *, limit=50, now=None):
             WITH dec, governs, p
             MATCH policy_path=(dec)-[:SUPERSEDES*0..]->(audit_dec:Decision)
             MATCH (audit_dec)-[audit_governs:GOVERNS]->(p)
-            WHERE toLower(audit_dec.summary) =~ $audit_pattern
+            WHERE size(string.matchRegEx(toLower(audit_dec.summary), $audit_pattern)) > 0
               AND (length(policy_path) = 0 OR
                    all(policy IN nodes(policy_path) WHERE policy.forbids_non_eu = true))
             MATCH path=(service:Service)-[:DEPENDS_ON*1..4]->(p)

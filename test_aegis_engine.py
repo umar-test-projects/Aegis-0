@@ -652,7 +652,7 @@ def test_live_company_brain_chat_panel(live_engine, monkeypatch):
         assert len(app.chat_message) == 2
         answer = app.session_state["company_brain_history"][0]["answer"]
         assert len(answer["rows"]) == 2
-        assert any("=~ $audit_pattern" in code.value for code in app.code)
+        assert any(answer["cypher"] == code.value for code in app.code)
         assert len(rendered[-1]["nodes"]) == len(answer["subgraph"]["nodes"])
         app.chat_input(key="company_brain_question").set_value("DELETE all nodes").run(timeout=30)
         assert not app.exception

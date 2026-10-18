@@ -1,6 +1,7 @@
 import os
 import json
 import hashlib
+import math
 import time
 import uuid
 from collections import deque
@@ -31,22 +32,49 @@ class AegisGraphEngine:
     # The conservative scope includes all operational nodes, not agent memory.
     _INPUT_STATE = """
         MATCH (n) WHERE n:Service OR n:DataPipeline OR n:Region OR n:SLA OR n:Decision
-        WITH n ORDER BY id(n)
-        WITH collect([id(n), labels(n), properties(n)]) AS input_nodes
+        WITH n, CASE WHEN size(keys(properties(n))) = 0 THEN [null]
+                     ELSE keys(properties(n)) END AS property_keys
+        UNWIND property_keys AS property_key
+        WITH n, property_key ORDER BY id(n), property_key
+        WITH n, collect(CASE WHEN property_key IS NULL THEN null
+                            ELSE [property_key, properties(n)[property_key]] END) AS property_pairs
+        WITH n, property_pairs ORDER BY id(n)
+        WITH collect([id(n), labels(n), properties(n)]) AS input_nodes,
+             collect([id(n), labels(n), property_pairs]) AS canonical_input_nodes
         OPTIONAL MATCH (a)-[r]->(b)
         WHERE type(r) IN ['DEPENDS_ON', 'BOUND_BY', 'ROUTES_THROUGH',
                          'CANDIDATE_FAILOVER', 'LOCATED_IN', 'GOVERNS', 'SUPERSEDES']
-        WITH input_nodes, a, r, b ORDER BY id(r)
-        WITH input_nodes, collect(CASE WHEN r IS NULL THEN null ELSE
-            [id(r), id(a), id(b), type(r), properties(r)] END) AS input_edges
+        WITH input_nodes, canonical_input_nodes, a, r, b,
+             CASE WHEN r IS NULL OR size(keys(properties(r))) = 0 THEN [null]
+                  ELSE keys(properties(r)) END AS edge_keys
+        UNWIND edge_keys AS edge_key
+        WITH input_nodes, canonical_input_nodes, a, r, b, edge_key ORDER BY id(r), edge_key
+        WITH input_nodes, canonical_input_nodes, a, r, b,
+             collect(CASE WHEN edge_key IS NULL THEN null
+                          ELSE [edge_key, properties(r)[edge_key]] END) AS edge_pairs
+        WITH input_nodes, canonical_input_nodes, a, r, b, edge_pairs ORDER BY id(r)
+        WITH input_nodes, canonical_input_nodes,
+             collect(CASE WHEN r IS NULL THEN null ELSE
+                [id(r), id(a), id(b), type(r), properties(r)] END) AS input_edges,
+             collect(CASE WHEN r IS NULL THEN null ELSE
+                [id(r), id(a), id(b), type(r), edge_pairs] END) AS canonical_input_edges
     """
+
+    # Preserve the database's own float representation across persisted JSON
+    # reports. Re-parsing floating-point query parameters can change their last
+    # bits, making unchanged measured properties compare unequal in Cypher.
+    _INPUT_FRESH = """CASE WHEN $canonical_nodes IS NULL THEN
+        input_nodes = $input_nodes AND input_edges = $input_edges
+        ELSE toJSON(canonical_input_nodes) = $canonical_nodes
+             AND toJSON(canonical_input_edges) = $canonical_edges END"""
 
     def _simulation_inputs(self):
         rows = self.graph.ro_query(self._INPUT_STATE +
-                                   " RETURN input_nodes, input_edges").result_set
+                                   " RETURN input_nodes, input_edges, toJSON(canonical_input_nodes), toJSON(canonical_input_edges)").result_set
         if not rows:
             raise ValueError("Operational graph is empty")
-        return {"nodes": rows[0][0], "edges": rows[0][1]}
+        return {"nodes": rows[0][0], "edges": rows[0][1],
+                "canonical_nodes": rows[0][2], "canonical_edges": rows[0][3]}
 
     def inject_regional_decision(self, pipeline_id, decision_id, summary,
                                  forbids_non_eu, author_handle="@marcus.compliance",
@@ -474,6 +502,11 @@ class AegisGraphEngine:
                 ep.policy_violation = $policy_violation, ep.sla_passed = $sla_passed,
                 ep.capacity_passed = $capacity_passed, ep.penalty_decay = 0.8
             WITH auditor, p, pb, context, ep WHERE ep.token = $token
+            WITH auditor, p, pb, context, ep,
+                 context.success_rate AS previous_weight,
+                 context.success_rate * 0.8 AS next_weight,
+                 context.runs + 1 AS next_runs,
+                 coalesce(p.memory_sequence, 0) + 1 AS next_sequence
             SET pb.baseline_success_rate = coalesce(pb.baseline_success_rate, pb.success_rate),
                 pb.baseline_runs = coalesce(pb.baseline_runs, pb.runs)
             MERGE (pb)-[:HAS_CONTEXT]->(context)
@@ -483,13 +516,13 @@ class AegisGraphEngine:
                 id: $episode, playbook_id: $playbook, pipeline_id: $pipeline,
                 policy_context: $context, decision_ids: $decisions,
                 incident_id: $incident, timestamp: $ts, outcome: 'REJECTED',
-                previous_weight: context.success_rate, shadow_graph_id: $shadow
+                previous_weight: previous_weight, shadow_graph_id: $shadow
             })
-            SET context.success_rate = context.success_rate * 0.8,
-                context.runs = context.runs + 1, context.rejections = context.rejections + 1
-            SET pb.success_rate = context.success_rate, pb.runs = pb.runs + 1,
-                p.memory_sequence = coalesce(p.memory_sequence, 0) + 1
-            SET event.weight = context.success_rate, event.sequence = p.memory_sequence
+            SET context.success_rate = next_weight,
+                context.runs = next_runs, context.rejections = context.rejections + 1
+            SET pb.success_rate = next_weight, pb.runs = pb.runs + 1,
+                p.memory_sequence = next_sequence
+            SET event.weight = next_weight, event.sequence = next_sequence
             CREATE (pb)-[:WEIGHT_UPDATED]->(event)
             CREATE (event)-[:FROM_EPISODE]->(ep)
             WITH context, ep, event
@@ -609,6 +642,7 @@ class AegisGraphEngine:
     def run_shadow_graph_simulation(
         self, pipeline_id: str, candidate_service_id: str, *,
         playbook_id: str = None, incident_id: str = None,
+        record_rejection: bool = True,
     ) -> Dict[str, Any]:
         """Verify all downstream dependency paths (up to four hops) in a sandbox.
 
@@ -836,7 +870,7 @@ class AegisGraphEngine:
         finally:
             shadow_graph.delete()
         report["rejection_memory"] = []
-        if report["simulation_approved"] is False:
+        if report["simulation_approved"] is False and record_rejection:
             playbooks = self.graph.ro_query("""
                 MATCH (pb:Playbook)-[:APPLIES_TO]->(:DataPipeline {id: $pipeline})
                 WHERE pb.target_route = $target AND ($playbook IS NULL OR pb.id = $playbook)
@@ -856,6 +890,10 @@ class AegisGraphEngine:
         sim_report: Dict[str, Any],
         expert_handle: str,
         policy_source: str,
+        *,
+        observed_latency_ms: float = None,
+        recovery_action_id: str = None,
+        recovery_action_version: int = None,
     ) -> Dict[str, Any]:
         """
         Track 2 Multi-Agent Coordination & Procedural Memory Loop.
@@ -864,6 +902,17 @@ class AegisGraphEngine:
             raise ValueError("Cannot commit a rejected shadow simulation")
         if sim_report.get("pipeline_id") != pipeline_id:
             raise ValueError("Simulation report belongs to a different pipeline")
+        if observed_latency_ms is not None:
+            if (isinstance(observed_latency_ms, bool)
+                    or not isinstance(observed_latency_ms, (int, float))
+                    or not math.isfinite(observed_latency_ms) or observed_latency_ms < 0
+                    or observed_latency_ms > sim_report["sla_limit_ms"]
+                    or not recovery_action_id
+                    or isinstance(recovery_action_version, bool)
+                    or not isinstance(recovery_action_version, int) or recovery_action_version < 1):
+                raise ValueError("Observed latency must be finite, within the SLA and bound to a recovery action")
+        elif recovery_action_id is not None:
+            raise ValueError("A recovery action requires an observed latency")
         commit_key = hashlib.sha256(json.dumps(
             [pipeline_id, playbook_id, sim_report["shadow_graph_id"]],
         ).encode()).hexdigest()
@@ -874,8 +923,12 @@ class AegisGraphEngine:
 
         if not sim_report.get("verified_inputs"):
             raise ValueError("Simulation input evidence missing; run a new simulation")
-        commit_cypher = "CALL { " + self._INPUT_STATE + """
-        RETURN input_nodes = $input_nodes AND input_edges = $input_edges AS fresh
+        action_guard = """
+        MATCH (recovery:RecoveryAction {id: $recovery_id})
+        WHERE recovery.status = 'FINALIZING' AND recovery.version = $recovery_version
+        WITH recovery
+        """ if recovery_action_id else ""
+        commit_cypher = action_guard + "CALL { " + self._INPUT_STATE + " RETURN " + self._INPUT_FRESH + """ AS fresh
         }
         WITH fresh WHERE fresh
         MATCH (planner:Agent {id: 'agent_planner'})
@@ -907,6 +960,15 @@ class AegisGraphEngine:
             pb.baseline_runs = coalesce(pb.baseline_runs, pb.runs)
         MERGE (pb)-[:HAS_CONTEXT]->(context)
 
+        WITH planner, auditor, executor, p, old_route, old_svc, new_svc, pb, context,
+             context.success_rate AS previous_weight,
+             (context.success_rate * context.runs + 1.0) / (context.runs + 1) AS next_weight,
+             context.runs + 1 AS next_runs,
+             coalesce(p.memory_sequence, 0) + 1 AS next_sequence,
+             coalesce(old_route.load_contribution_pct,
+                 CASE WHEN old_svc.max_throughput_tps > 0
+                 THEN p.throughput_tps * 100.0 / old_svc.max_throughput_tps ELSE 0 END) AS old_contribution
+
         CREATE (lock:HandoffLock {
             id: $lock_id,
             shadow_graph_verified: $shadow_id,
@@ -919,17 +981,16 @@ class AegisGraphEngine:
 
         // Older graphs have no per-route contribution. Infer it once using
         // the same throughput/capacity model, then retain it on the old route.
-        SET old_route.load_contribution_pct = coalesce(old_route.load_contribution_pct,
-            CASE WHEN old_svc.max_throughput_tps > 0
-                 THEN p.throughput_tps * 100.0 / old_svc.max_throughput_tps ELSE 0 END)
+        SET old_route.load_contribution_pct = old_contribution
         SET old_svc.current_load_pct = CASE
-            WHEN old_svc.current_load_pct >= coalesce(old_route.load_contribution_pct, 0)
-            THEN old_svc.current_load_pct - coalesce(old_route.load_contribution_pct, 0)
+            WHEN old_svc.current_load_pct >= old_contribution
+            THEN old_svc.current_load_pct - old_contribution
             ELSE 0 END
         SET old_route.active = false
         CREATE (p)-[:ROUTES_THROUGH {active: true, switched_at: $ts, authorized_by: $lock_id,
                                     load_contribution_pct: $traffic_load}]->(new_svc)
-        SET p.status = 'HEALTHY', p.latency_ms = $proj_lat
+        SET p.status = 'HEALTHY', p.latency_ms = $proj_lat,
+            p.latency_source = 'model_projection', p.observed_gateway_p95_ms = $observed_latency
         SET new_svc.current_load_pct = coalesce($target_load, new_svc.current_load_pct)
 
         CREATE (ep:Episode {
@@ -937,6 +998,8 @@ class AegisGraphEngine:
             trigger_event: $trigger_event,
             chosen_playbook: $playbook_id,
             outcome: 'SUCCESS',
+            evidence_type: $latency_source, recovery_action_id: $recovery_id,
+            observed_latency_ms: $observed_latency,
             latency_saved_ms: ($previous_latency - $proj_lat),
             notified_owner: $expert_handle,
             incident_id: $incident, policy_context: $context,
@@ -948,24 +1011,25 @@ class AegisGraphEngine:
             id: $episode_id, playbook_id: $playbook_id, pipeline_id: $pipeline_id,
             policy_context: $context, decision_ids: $decisions,
             incident_id: $incident, timestamp: $ts, outcome: 'SUCCESS',
-            previous_weight: context.success_rate, shadow_graph_id: $shadow_id,
+            previous_weight: previous_weight, shadow_graph_id: $shadow_id,
             handoff_lock_id: $lock_id, disconnected_service: old_svc.id,
             connected_service: new_svc.id, notified_expert: $expert_handle,
-            policy_citation: $policy_source
+            policy_citation: $policy_source,
+            recovery_action_id: $recovery_id, observed_latency_ms: $observed_latency,
+            evidence_type: $latency_source
         })
-        SET context.success_rate = (context.success_rate * context.runs + 1.0) / (context.runs + 1),
-            context.runs = context.runs + 1
-        SET pb.success_rate = context.success_rate, pb.runs = pb.runs + 1,
-            p.memory_sequence = coalesce(p.memory_sequence, 0) + 1
-        SET event.weight = context.success_rate, event.sequence = p.memory_sequence
+        SET context.success_rate = next_weight, context.runs = next_runs
+        SET pb.success_rate = next_weight, pb.runs = pb.runs + 1,
+            p.memory_sequence = next_sequence
+        SET event.weight = next_weight, event.sequence = next_sequence
         CREATE (pb)-[:WEIGHT_UPDATED]->(event)-[:FROM_EPISODE]->(ep)
 
-        WITH lock, old_svc, new_svc, pb, ep, context
+        WITH lock, old_svc, new_svc, pb, ep, context, next_weight
         UNWIND $decisions AS decision_id
         MATCH (decision:Decision {id: decision_id})
         MERGE (context)-[:UNDER_POLICY]->(decision)
         CREATE (ep)-[:EVALUATED_UNDER]->(decision)
-        RETURN DISTINCT lock.id, old_svc.id, new_svc.id, pb.success_rate, ep.id,
+        RETURN DISTINCT lock.id, old_svc.id, new_svc.id, next_weight, ep.id,
                         $expert_handle, $policy_source, $context
         """
         res = self.graph.query(
@@ -973,6 +1037,8 @@ class AegisGraphEngine:
             {
                 "input_nodes": sim_report["verified_inputs"]["nodes"],
                 "input_edges": sim_report["verified_inputs"]["edges"],
+                "canonical_nodes": sim_report["verified_inputs"].get("canonical_nodes"),
+                "canonical_edges": sim_report["verified_inputs"].get("canonical_edges"),
                 "traffic_load": next(check["required_throughput_tps"] / check["max_throughput_tps"] * 100
                                      for check in sim_report["capacity_checks"]
                                      if check["service_id"] == sim_report["target_service"]),
@@ -985,6 +1051,10 @@ class AegisGraphEngine:
                 "lock_id": lock_id,
                 "shadow_id": sim_report["shadow_graph_id"],
                 "proj_lat": sim_report["projected_e2e_latency_ms"],
+                "observed_latency": observed_latency_ms,
+                "latency_source": "loopback_http" if observed_latency_ms is not None else "model_projection",
+                "recovery_id": recovery_action_id,
+                "recovery_version": recovery_action_version,
                 "target_load": next((check["projected_load_pct"]
                                      for check in sim_report.get("capacity_checks", [])
                                      if check["service_id"] == sim_report["target_service"]), None),
