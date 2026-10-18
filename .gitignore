@@ -22,3 +22,6 @@ appendonlydir/
 library-files/
 scratch/
 shared/
+
+# Local video exports; public demo is linked in README
+submission/

@@ -1,22 +1,41 @@
 # Aegis-0 — graph-checked incident recovery
 
-Aegis checks recovery playbooks against current company decisions and service
-dependencies in FalkorDB, tests each candidate in an ephemeral shadow graph,
-executes an approved route against local HTTP services, and measures the result
-before recording success. Failed verification disables the local demo router.
+**[Watch the working demo on YouTube](https://youtu.be/2Gdl9QzXtrk)**
 
-**Hackathon tracks:** Track 01: Agents That Act on Connected Data (primary);
-Track 02: Agent Memory and Coordination; Track 03: Company Brain.
+A payment route is slow, but the fastest backup violates the current company
+policy. Aegis uses FalkorDB to find a permitted recovery, audit it in an ephemeral
+shadow graph, execute it against local HTTP services, and measure the result
+before recording success.
 
-The executable agent is a bounded MCP client. Planner, auditor and executor are
-independently callable phases that share persisted graph state; they are not
-three independently reasoning LLMs. No model API key is required.
+**WeMakeDevs × FalkorDB Graph Hacks:** Track 01: Agents That Act on Connected
+Data (primary), Track 02: Agent Memory and Coordination, and Track 03: Company Brain.
 
-## Start with the measured demo
+## What the demo proves
 
-With Python 3.10+ and Docker installed, on Windows PowerShell:
+1. The US failover is rejected by the active EU-only policy.
+2. The permitted EU route is approved and executed. The recorded run's measured
+   HTTP p95 falls from **416.4 ms to 118.9 ms**.
+3. A handoff persists in FalkorDB after approval. A new policy freezes its target;
+   the executor returns **STALE** without switching the route.
+4. Action records, governing decisions, receipts, and individual request samples
+   can be inspected and exported as JSON.
+
+All services and company records are synthetic. HTTP observations are real
+loopback requests. The graph's **140 ms predicted dependency-path latency** is
+separate from measured router/gateway HTTP latency. Three samples demonstrate
+the recovery loop; they do not establish a production percentile SLA.
+
+## Complete local setup
+
+Requirements: **Python 3.10+**, **Docker with Compose**, and Git. Start Docker
+before running the commands. FalkorDB binds only to `127.0.0.1:6379`.
+No paid service, cloud account, or model API key is required.
+
+### Windows PowerShell
 
 ```powershell
+git clone https://github.com/umar-test-projects/Aegis-0.git
+cd Aegis-0
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 docker compose up -d --wait
@@ -25,76 +44,66 @@ $env:AEGIS_GRAPH_NAME = 'aegis_demo_verified'
 .\.venv\Scripts\python.exe -m streamlit run aegis_dashboard.py
 ```
 
-On macOS/Linux, use `.venv/bin/python` in place of `.venv\Scripts\python.exe`.
-The CLI uses the dedicated `aegis_demo_verified` graph and persistent simulator
-receipts in `scratch/demo-runtime.json`. Its reset guard refuses production graph
-names. It never sends a Slack notification or changes real infrastructure.
+### macOS / Linux
 
-For a complete headless run with exported observations, use
-`python aegis_demo.py --reset --output scratch/recovery.json` inside your Python
-environment. Reset the measured dashboard incident before recording its first run.
-
-In the dashboard, click **Start measured services**, then **Run measured
-recovery**. Watch the MCP tool calls: the fast US route is rejected by the current
-policy, the EU route is approved, routing changes, and actual HTTP samples are
-shown. **Prepare handoff** stops after approval. Update a company policy using
-the sidebar, then **Execute / resume handoff** to demonstrate stale approval
-refusal. **Reset graph + local incident** clears graph history explicitly.
-
-Predicted dependency-path latency and observed router/gateway HTTP p95 are
-separate measurements. Three HTTP samples are a small local demonstration, not
-a production SLA or load benchmark. `DataPipeline.latency_ms` remains the graph
-model; `observed_gateway_p95_ms` stores the actual local observation.
-
-## Run an agent and independent executor over MCP
-
-Seed the dedicated graph:
-
-```powershell
-.\.venv\Scripts\python.exe aegis_demo.py --reset --seed-only
-$env:AEGIS_GRAPH_NAME = 'aegis_demo_verified'
-$env:AEGIS_RUNTIME_URL = 'http://127.0.0.1:8787'
-$env:AEGIS_RUNTIME_TOKEN = [guid]::NewGuid().ToString('N')
-.\.venv\Scripts\python.exe aegis_runtime.py --port 8787
+```bash
+git clone https://github.com/umar-test-projects/Aegis-0.git
+cd Aegis-0
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+docker compose up -d --wait
+.venv/bin/python aegis_demo.py --reset --seed-only
+export AEGIS_GRAPH_NAME=aegis_demo_verified
+.venv/bin/python -m streamlit run aegis_dashboard.py
 ```
 
-Keep that runtime process running. In a second terminal, set the same three
-environment variables, then run:
+Open **http://localhost:8501**. Click **Start measured services**, then **Run
+measured recovery**. Expand the rejected US and verified EU attempts to inspect
+their policies, predictions, and observations.
 
-```powershell
-.\.venv\Scripts\python.exe aegis_agent.py --stop-after-approval
-.\.venv\Scripts\python.exe aegis_agent.py --resume ACTION_ID
+For the stale-handoff scene, click **Reset graph + local incident**, then
+**Prepare handoff**. In the sidebar's **Simulate Incoming Slack Thread**, submit:
+
+```text
+Freeze all traffic to Zurich DR node due to maintenance.
 ```
 
-Use the `action_id` returned by the first command. Each command starts a fresh
-MCP server process. Proposal, independent shadow audit, executor claim, HTTP
-receipt and observations persist in FalkorDB. To complete all phases in one run,
-omit `--stop-after-approval`. A healthy runtime stops before proposing a repair;
-an all-rejected incident reports `BLOCKED` without changing the route.
+Click **Execute / resume handoff**. The previous approval must become `STALE`.
+The Slack-style input is a local simulation; it sends no Slack message.
+Resetting explicitly clears the dedicated demo graph's history.
 
-Available tools: `observe_local_runtime`, `recall_procedural_playbooks`,
-`propose_local_recovery`, `audit_local_recovery`, `execute_local_recovery`,
-`get_local_recovery`. Endpoint and token come from server environment, never
-from an agent-supplied destination URL. The control API accepts literal loopback
-origins only and requires a bearer token.
+For a complete headless run on Windows:
+
+```powershell
+.\.venv\Scripts\python.exe aegis_demo.py --reset --output scratch/recovery.json
+```
+
+On macOS/Linux, use `.venv/bin/python aegis_demo.py --reset --output scratch/recovery.json`.
+
+The CLI uses `aegis_demo_verified` and saves runtime receipts in
+`scratch/demo-runtime.json`. Reset guards refuse production graph names.
+For an existing database, configure `FALKORDB_HOST`, `FALKORDB_PORT`, and optionally
+`FALKORDB_PASSWORD`. Stop the Compose database with `docker compose down`.
+Keep the container running to retain graph memory; this Compose setup has no
+named data volume and does not promise persistence after container removal.
 
 ## Graph data model
 
 ```mermaid
 graph LR
     Person -->|AUTHORED| Decision
-    NewDecision -->|SUPERSEDES| Decision
-    Decision -->|GOVERNS| Pipeline
+    NewDecision[Decision: successor] -->|SUPERSEDES| Decision
+    Decision -->|GOVERNS| Pipeline[DataPipeline]
     Person -->|OWNS| Pipeline
     Service -->|DEPENDS_ON| Pipeline
-    Checkout -->|DEPENDS_ON| Service
+    Checkout[Service: checkout] -->|DEPENDS_ON| Service
     Checkout -->|BOUND_BY| SLA
-    Pipeline -->|ROUTES_THROUGH| Gateway
+    Pipeline -->|ROUTES_THROUGH| Gateway[Service: gateway]
     Gateway -->|LOCATED_IN| Region
     Playbook -->|APPLIES_TO| Pipeline
-    Planner -->|PROPOSED_RECOVERY| RecoveryAction
-    Auditor -->|UPDATED_RECOVERY| RecoveryAction
-    Executor -->|CLAIMED_RECOVERY| RecoveryAction
+    Planner[Agent: planner] -->|PROPOSED_RECOVERY| RecoveryAction
+    Auditor[Agent: auditor] -->|UPDATED_RECOVERY| RecoveryAction
+    Executor[Agent: executor] -->|CLAIMED_RECOVERY| RecoveryAction
     RecoveryAction -->|USES_PLAYBOOK| Playbook
     RecoveryAction -->|RECOVERS| Pipeline
     Episode -->|USED_PLAYBOOK| Playbook
@@ -102,21 +111,83 @@ graph LR
     Playbook -->|WEIGHT_UPDATED| PlaybookWeightEvent
 ```
 
-`RecoveryAction` stores the durable phase, audit input snapshot, runtime identity
-and revision, before/after observations and decision trace. `RecoveryLease`
-serializes competing actions for one pipeline. Active policies exclude decisions
-with incoming `SUPERSEDES` edges. Dependency traversal is bounded to four hops.
-Core Cypher lives in `aegis_falkordb_engine.py` and `aegis_recovery.py`; schema and
-read queries are in `aegis_company_brain.py`.
+`RecoveryAction` stores status, version, the audited input snapshot, runtime
+identity/revision, and before/after observations. `RecoveryLease`, keyed by
+pipeline ID, serializes competing actions. The schema is also exposed as the MCP
+resource `falkordb://aegis/schema` in [aegis_company_brain.py](aegis_company_brain.py).
 
-`FINALIZING` and `STOPPING` fence success and compensation with action versions.
-An outdated worker cannot disable a recovery that another worker verified. A
-restarted executor can resume either phase using the same action ID.
+## Cypher and algorithms
 
-## Reproduce the evaluation
+See [the actual read queries extracted from the source](docs/graph-queries.cypher).
+Run each query separately, supplying the parameters in its comments.
 
-See [the recorded local evaluation](docs/evaluation-results.md): 161 tests passed
-and 8/8 disclosed evaluation scenarios passed on 18 October 2026.
+| Product behavior | Implementation |
+| --- | --- |
+| Active policy, ownership, and playbook recall | [aegis_falkordb_engine.py](aegis_falkordb_engine.py), `recall_playbooks_and_company_brain` |
+| Bounded dependency traversal and shadow audit | Same file, `run_shadow_graph_simulation` |
+| Freshness check and graph commit in one Cypher query | Same file, `coordinate_handoff_and_commit` |
+| Durable phases, action versions, and pipeline lease | [aegis_recovery.py](aegis_recovery.py) |
+| Read-only Company Brain intent queries | [aegis_company_brain.py](aegis_company_brain.py) |
+
+Active decisions exclude incoming `SUPERSEDES` relationships. Shadow audits
+traverse `DEPENDS_ON` paths up to four hops and check every attached SLA,
+regional/traffic policy, capacity limit, and lock wait. Every shadow graph is
+deleted in a `finally` block; its captured evidence remains available.
+
+Service criticality uses an equal-weight mean of normalized incoming degree and
+directed Brandes betweenness on service-to-service dependency edges. It is a
+structural risk ranking, not an outage probability. Policy-scoped playbook
+weights change after rejected attempts or committed success; simulation approval
+alone earns no reward. These weights guide ranking rather than calibrated
+success probabilities.
+
+## MCP agent and independent executor
+
+The executable agent is a bounded MCP client. Planner, auditor, and executor are
+independently callable phases sharing graph state, rather than three reasoning
+LLMs. The dashboard invokes this client through a real MCP server process.
+
+In PowerShell, start a persistent local runtime:
+
+```powershell
+$env:AEGIS_GRAPH_NAME = 'aegis_demo_verified'
+$env:AEGIS_RUNTIME_URL = 'http://127.0.0.1:8787'
+$env:AEGIS_RUNTIME_TOKEN = [guid]::NewGuid().ToString('N')
+.\.venv\Scripts\python.exe aegis_runtime.py --port 8787
+```
+
+In a second terminal, set the **same values** for those three environment
+variables, then run:
+
+```powershell
+.\.venv\Scripts\python.exe aegis_agent.py --stop-after-approval
+.\.venv\Scripts\python.exe aegis_agent.py --resume ACTION_ID
+```
+
+Replace `ACTION_ID` with the returned `action_id`. On macOS/Linux, use `export`
+for the variables, generate a shared token with `.venv/bin/python -c
+"import secrets; print(secrets.token_hex(32))"`, and use `.venv/bin/python`.
+Each agent command starts a new MCP server process. Omitting
+`--stop-after-approval` completes the workflow in one run.
+
+Tools include `observe_local_runtime`, `recall_procedural_playbooks`,
+`propose_local_recovery`, `audit_local_recovery`, `execute_local_recovery`, and
+`get_local_recovery`. The runtime accepts authenticated control at literal
+loopback HTTP origins; agent input cannot select an arbitrary destination.
+
+## Verification and evaluation
+
+The [recorded evaluation](docs/evaluation-results.md) reports **161 passing tests**
+with live integration enabled and **8/8 disclosed synthetic scenarios**. Full
+JSON evidence is included in [docs/evidence](docs/evidence).
+
+On macOS/Linux, run the evaluation:
+
+```bash
+.venv/bin/python aegis_demo.py --evaluate --output scratch/evaluation.json
+```
+
+On Windows, evaluate and enable live tests:
 
 ```powershell
 .\.venv\Scripts\python.exe aegis_demo.py --evaluate --output scratch/evaluation.json
@@ -124,290 +195,45 @@ $env:AEGIS_TEST_FALKORDB = '1'
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The evaluation runs eight disclosed synthetic scenarios: recovery, stale policy,
-all candidates blocked, failed gateway, interrupted executor, duplicate
-execution, policy change during execution, and memory enabled/disabled on a
-repeated fixture. Each case uses a unique disposable graph, exports complete
-evidence, and deletes only that graph. It exits nonzero if any case fails.
-Actual latency values depend on the machine. The memory comparison counts
-candidate attempts, not a general improvement in recovery time.
-
-HTTP and graph updates cannot form one distributed transaction. Freshness is
-checked before dispatch, after observation, and atomically at graph commit.
-A policy change during the HTTP action can briefly leave the local route applied;
-the controller disables it when detected and records `STALE`. Runtime receipts
-allow a restarted executor to discover an already-applied effect. If the runtime
-is unavailable, compensation is recorded as incomplete. Resume pending work
-against the same persisted runtime identity. Keep FalkorDB running to retain graph
-memory; the current Compose setup does not promise persistence after container
-removal.
-
-The original dashboard shadow-triage and legacy commit tool are **graph-only,
-model-based demonstrations**. Their projected success must not be presented as
-measured service recovery. Their episodes carry `model_projection` evidence;
-verified local executions carry `loopback_http` evidence and an action ID.
-
-## Submission evidence
-
-See [the four-minute recording guide](docs/demo-script.md). Record the working
-project and add its video link to your submission. No demo video or public
-deployment is claimed by this repository. The permitted source corpus and all
-infrastructure/people/policy fixtures in this demo are synthetic.
-
-**AI assistance disclosure:** The verified local recovery increment was developed
-with OpenAI Codex assistance, including implementation, tests and documentation.
-Participants should review the code and be able to explain its architecture,
-graph queries, boundaries and evaluation results.
-
-## Setup and tests
-
-Start a local FalkorDB instance and run the unit and live integration tests:
+On macOS/Linux, enable live tests:
 
 ```bash
-python -m pip install -r requirements.txt
-docker compose up -d --wait
-AEGIS_TEST_FALKORDB=1 pytest test_aegis_engine.py -v
+AEGIS_TEST_FALKORDB=1 .venv/bin/python -m pytest -q
 ```
 
-Live tests create unique `aegis_test_*` graphs and delete them after each test.
-They never seed or delete the production graph. To use an existing FalkorDB,
-skip the Compose command and set `FALKORDB_HOST`, `FALKORDB_PORT`, and optionally
-`FALKORDB_PASSWORD`. An explicitly enabled live test fails if the database is
-unavailable. Without `AEGIS_TEST_FALKORDB=1`, only unit tests run.
+Tests and evaluation use unique disposable `aegis_test_*` graphs and clean them
+up. Explicitly enabled live tests fail when FalkorDB is unavailable. Without the
+flag, integration tests are skipped. The evaluation covers recovery, stale
+approval, blocked candidates, gateway failure, interrupted execution, duplicate
+execution, policy change during execution, and memory enabled/disabled. The
+repeated memory fixture needs one learned attempt versus two baseline attempts;
+this is not a general recovery-time benchmark.
 
-The ranking uses directed service-to-service `DEPENDS_ON` edges. Pipeline nodes
-and routing relationships are excluded. Scores average normalized incoming degree
-and directed betweenness; they represent structural risk rather than a count of
-all services affected by an outage.
+## Boundaries
 
-Stop a database started through Compose with `docker compose down`.
+HTTP effects and graph commits are not one distributed transaction. Freshness
+is checked before dispatch, after observation, and atomically at graph commit.
+A policy change during execution may briefly leave a route applied; detection
+disables the local router and records `STALE`. Failed verification also disables
+the router. Unavailable-runtime compensation is recorded as incomplete.
+Versioned `FINALIZING`/`STOPPING` phases fence concurrent success and compensation;
+restarts use the same action ID, persisted runtime identity, and receipts.
 
-## Dashboard compliance export
+The original shadow-triage/reporting tools are graph-only, model-based features.
+Their projected outcomes are separate from the measured HTTP recovery workflow.
+[Advanced dashboard usage](docs/advanced-usage.md) documents these optional tools.
 
-```bash
-streamlit run aegis_dashboard.py
-```
+## Submission and disclosure
 
-Run **Shadow-Graph Triage & Self-Heal**, then click **Export BaFin Audit #88
-Markdown report**. The report captures all simulation attempts from the latest
-run in your dashboard session, policy lineage and citations, SLA checks, commit
-results, and the matching persisted HandoffLock/agent/episode/playbook trace.
-It remains available across reruns; resetting the graph clears it. Missing graph
-provenance is explicitly marked as incomplete. An all-rejected run reports that
-no execution was committed.
+- **Public code:** [umar-test-projects/Aegis-0](https://github.com/umar-test-projects/Aegis-0)
+- **Demo video:** [Watch Aegis-0](https://youtu.be/2Gdl9QzXtrk)
+- **Setup and graph model:** this README; complete local setup is provided in
+  place of a public deployment.
+- **Queries and evidence:** [Cypher](docs/graph-queries.cypher),
+  [evaluation](docs/evaluation-results.md), and [JSON evidence](docs/evidence).
 
-Run all tests, including report formatting and a live simulation-to-handoff export:
-
-```bash
-AEGIS_TEST_FALKORDB=1 pytest -v
-```
-
-## Live Vector RAG comparison
-
-In **Policy lineage illustration**, click **Run Side-by-Side Benchmark**.
-The default incident query ranks the raw Jira `DEC-2026-101` US failover summary
-above Slack `DEC-2026-409` using local TF-IDF/cosine similarity. The graph side
-executes the engine's live `SUPERSEDES`-filtered retrieval, then verifies the US
-route in a disposable shadow graph. The seeded EU freeze rejects that route.
-Lifting the freeze changes the displayed result to reflect the current policy.
-
-Both retrieval times are measured with `perf_counter` in milliseconds; shadow
-verification is timed separately. Vector indexing is excluded and graph retrieval
-includes a database round trip. This two-chunk lexical simulation illustrates
-missing policy lineage; it is not a general embedding-model performance benchmark.
-Queries mentioning GDPR or BaFin can rank the Slack rule first. No handoff is
-committed and no production route is changed by the benchmark.
-
-## Inspect a shadow sandbox
-
-Run triage or the benchmark, then enable **🔍 Inspect Shadow Sandbox Diff**.
-Choose an approved or rejected simulation to view its captured sandbox beside
-the current live production graph. The simulated `ROUTES_THROUGH` edge is yellow
-and thicker than other edges. This is a captured counterfactual subgraph, rather
-than a full production graph copy; production may already reflect a committed
-triage action. The sidebar layer filter applies to the production visualization.
-
-Each simulation returns `shadow_snapshot` with `graph_id`, `nodes` (ID, labels,
-properties), and `edges` (ID, source, target, type, properties). The dashboard's
-**Download shadow snapshot JSON** button exports that snapshot. Sandbox data is
-captured before deletion, and verification or export failures still trigger
-cleanup. No shadow database needs to remain running for inspection.
-
-## Enterprise chaos scenarios
-
-Reset and seed once to install the service throughput profiles. Select a **Chaos
-scenario** in the sidebar, then click **Inject Chaos & Evaluate**. Injection
-mutates the live graph and automatically evaluates the failover playbooks.
-Scenarios accumulate; reset before each one to reproduce isolated outcomes.
-
-| Scenario | Injected failure | Expected checks |
-| --- | --- | --- |
-| Cascading ledger lock | Locked EU ledger, US replica in lock wait, US settlement API depending on the replica | Lock waits propagate across dependency paths; locked/overloaded services and downstream SLA breaches reject failover |
-| Throughput spike | Pipeline demand rises from 4,500 to 18,000 TPS; Zurich DR load rises to 95% | Zurich's current and projected load exceed the 90% ceiling |
-| SLA upgrade | Adds a concurrent Platinum SLA: 100 ms limit, 10,000 TPS minimum, $75,000/min penalty | Original and upgraded contracts are both checked; the faster US route violates EU policy and the latency limit, while Zurich also exceeds capacity |
-
-The sandbox preserves dependency edges up to four hops instead of flattening
-the chain. Every service and attached SLA on these paths is evaluated. Projected
-latency sums service latency and lock waits along each path plus the candidate
-gateway latency. Capacity uses an explicit demo model: incoming candidate traffic
-adds to its current background utilization; services already carrying the pipeline
-use the larger of current load and required TPS as a fraction of capacity. Exactly
-90% is allowed; missing capacity profiles fail the check. SLA minimum TPS raises
-the required throughput for the shared route.
-
-The audit log displays capacity tables, per-contract SLA results, dependency
-paths, and rejection reasons. These are also retained in sandbox JSON and the
-Markdown report. Rejected simulations cannot authorize a handoff.
-
-## Ask the Company Brain
-
-The dashboard's **💬 Ask the Company Brain** panel accepts questions such as:
-
-- Who owns services impacted by BaFin Audit #88?
-- Which decisions were superseded today?
-- Which decisions were superseded yesterday?
-- What are the active policies?
-- Who owns svc_merchant_checkout?
-- What superseded DEC-2026-101?
-- Which decisions did DEC-2026-409 supersede?
-
-Translation uses deterministic, parameterized intent templates grounded in the
-same schema definition exposed by `falkordb://aegis/schema`; no model service or
-API key is required. Unsupported questions return examples instead of guessed
-Cypher. Results show the actual Cypher, bound parameters, evidence table, and
-returned subgraph. The latest ten exchanges remain in the session until reset.
-
-Audit ownership queries traverse dependent services within four hops under
-currently applicable audit decisions. They preserve audit context across an
-uninterrupted chain of inherited regional restrictions (`forbids_non_eu=true`),
-returning both the active decision and the original audit decision with lineage
-in the subgraph. A waiver breaks inheritance, so later generic regional freezes
-do not silently reactivate an old audit. Direct service owners and pipeline owners
-are separate fields. Historical queries retain superseded decisions; current
-policy queries exclude decisions with incoming `SUPERSEDES` edges. Today and
-yesterday use UTC boundaries and the superseding decision's Unix timestamp.
-Seeded historical records may produce no results for today's window.
-“What superseded DEC-2026-101?” returns successors; “Which decisions did
-DEC-2026-409 supersede?” returns predecessors. Both directions include paths up
-to four hops. Copy decision IDs exactly as displayed: identifier case is preserved,
-while surrounding question wording is matched without regard to case. Ambiguous
-or unsupported lineage phrasing is rejected before querying.
-
-Agents can call the new `query_company_brain_cypher(question, limit=50)` MCP tool,
-which returns the same JSON evidence and subgraph. Queries execute through
-`GRAPH.RO_QUERY` with a two-second timeout and at most 100 result rows. Truncated
-results are marked. Raw Cypher and mutation requests are not accepted.
-
-```bash
-python aegis_mcp_server.py
-```
-
-## Incoming Slack threads
-
-In the dashboard sidebar, choose **Slack author**, type into **Simulate Incoming
-Slack Thread**, and submit. For example:
-
-```text
-Urgent: Freeze all traffic to Zurich DR node due to maintenance
-```
-
-The parser resolves one existing Service or DataPipeline by ID, name, or known
-alias (Zurich, core ledger, checkout, EU payments). It recognizes explicit
-freeze/block/stop and resume/unfreeze/unblock directives. Unsupported actions,
-questions, negation and ambiguous targets return an error without writing.
-The author must be `@marcus.compliance` or `@sarah.chen`; an optional matching
-author prefix in the raw text is supported.
-
-Ingestion creates a Decision with the raw text, resolved target, source and time,
-links the existing Person via `AUTHORED`, and links the target via `GOVERNS`.
-Previously current decisions for that same target become inactive and receive
-`SUPERSEDES` links from the new decision. The first decision on a service has no
-predecessor. Pipeline EU restrictions are inherited; resuming a service never
-grants a cross-region waiver. Run triage to see the resulting traffic freeze
-enforced across the candidate and all services on the dependency paths. Snapshot
-JSON and Markdown reports include the applicable Slack policy evidence.
-
-For local webhook simulations, start the listener (default loopback port 8080):
-
-```bash
-python aegis_webhook_listener.py
-curl http://127.0.0.1:8080/slack/events \
-  -H 'Content-Type: application/json' \
-  -d '{"author":"@marcus.compliance","text":"Freeze Zurich DR node for maintenance","event_id":"demo-zurich-freeze-1"}'
-```
-
-For Slack Events API delivery, configure `SLACK_SIGNING_SECRET` and
-`AEGIS_SLACK_USER_MAP` (a JSON object mapping real Slack user IDs to the two allowed
-handles). The listener verifies Slack HMAC signatures and the five-minute request
-window, handles URL verification, ignores bot/edit events, and reads the sender
-from the mapped event user ID. Signed mode accepts Slack Events payloads rather
-than local simulation JSON. Use `--host` and `--port` to configure the bind address.
-
-Slack `event_id` values deduplicate retries, including retries after a later
-decision has superseded the original directive. Reusing an ID with different
-content fails. The listener uses the same `FALKORDB_HOST`, `FALKORDB_PORT`, and
-`FALKORDB_PASSWORD` settings as the dashboard; seed the graph before ingestion.
-
-## Policy-scoped procedural learning
-
-Every rejected Shadow-Graph simulation now records a `RejectedEpisode` through
-`(RiskAuditor)-[:RECORDED]->(RejectedEpisode)-[:USED_PLAYBOOK]->(Playbook)`, including
-the rejection reasons, shadow graph ID, incident ID, and governing decisions.
-This happens after sandbox cleanup for incident simulations in dashboard, MCP
-and CLI calls. The policy-lineage illustration explicitly disables learning.
-Pass `playbook_id` to identify the attempted playbook; when omitted, matching
-playbooks for the pipeline and candidate route are inferred. Passing the same
-report again to `record_rejected_episode` does not apply a second penalty.
-
-Each pipeline and sorted set of applicable current decisions defines a policy
-context. A `PlaybookContext` stores its independent `success_rate`, run count,
-and rejection count. Rejections multiply that weight by **0.8** and increment the
-run count. A committed success applies `(weight * runs + 1) / (runs + 1)` in that
-same context. Passing a simulation alone earns no reward. These adaptive weights
-are ranking signals, rather than empirical probabilities after penalty decay.
-
-`Playbook.success_rate` projects the last updated context for graph inspection.
-Recall always resolves the currently applicable context, including candidate and
-dependency service policies. A new context starts from the unchanged historical
-baseline (US: 0.94 over 18 runs; EU: 0.89 over 9). Old context penalties remain
-auditable and do not penalize a newly authorized policy context.
-
-The dashboard's **Procedural Memory: Playbook Weight Evolution** section refreshes
-every five seconds. The line chart uses persisted `PlaybookWeightEvent` history
-grouped by incident, and the bar chart shows both playbooks' current-context
-weights. Its journal includes context IDs and policy decision IDs. Dashboard
-triage groups related attempts under one incident ID; chart refreshes and ordinary
-page reruns do not create training events. The side-by-side lineage illustration
-runs a simulation with learning disabled, so viewing it does not change weights.
-
-To see both weights decay across runs, inject the throughput-spike scenario and
-run triage repeatedly. To see successful learning and candidate reordering, reset
-and run default triage: the first rejected US route drops from 0.94 to 0.752, while
-the committed EU route rises from 0.89 to 0.901. Subsequent runs prefer the EU route.
-
-## Commit freshness and policy updates
-
-Simulation reports capture the operational nodes and relationships used to
-verify a route. Commit compares that snapshot with the live graph inside the
-same database query that changes the route. Changed capacity, throughput, locks,
-SLAs, policies, or topology require a new simulation. This check conservatively
-covers the full operational graph, so unrelated operational changes can also
-invalidate a report. Retrying an already completed commit returns its original
-receipt without changing routing or rewarding the playbook again.
-
-Active routing edges record `load_contribution_pct`. Switching routes releases
-that contribution from the departing gateway; subsequent simulations distinguish
-background utilization from this pipeline's traffic. For older edges without the
-field, the first departure estimates the contribution from current pipeline
-throughput and gateway capacity. That migration is an estimate if historical
-traffic differed; new edges retain the explicitly calculated contribution.
-
-Dashboard and MCP regional-policy updates share one atomic implementation. Each
-update creates one successor linked to all previous active decisions, preserves
-any pipeline traffic freeze, and rejects an already-used decision ID. Resume
-traffic explicitly through the Slack directive flow to clear a maintenance
-freeze. Slack messages must begin with an explicit action (optionally preceded
-by `Urgent:` or `Please`); negated and narrative messages are rejected.
-
-A dashboard initialization error now displays a connection error and stops.
-Only a successful empty-graph check or the explicit reset control seeds data.
+**AI assistance:** OpenAI Codex assisted with implementation, tests,
+documentation, and video production. Narration is an AI-generated neural voice.
+All infrastructure, people, policies, and source records in the demo are
+synthetic. The project changes only its local simulator, never real production
+infrastructure. Participants should be able to explain the code and its limits.

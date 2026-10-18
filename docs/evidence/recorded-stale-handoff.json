@@ -1,0 +1,620 @@
+{
+  "status": "STALE",
+  "action_id": "recovery_bf66d5bcfb0243f6bc78912c52e41981",
+  "attempts": [
+    {
+      "before": {
+        "errors": 0,
+        "measured_at": 1792326731.5726104,
+        "p95_ms": 475.02439992967993,
+        "sample_count": 3,
+        "samples": [
+          {
+            "latency_ms": 463.3618000661954,
+            "ok": true,
+            "revision": 4,
+            "service_id": "svc_eu_gateway_primary"
+          },
+          {
+            "latency_ms": 466.2960000569001,
+            "ok": true,
+            "revision": 4,
+            "service_id": "svc_eu_gateway_primary"
+          },
+          {
+            "latency_ms": 475.02439992967993,
+            "ok": true,
+            "revision": 4,
+            "service_id": "svc_eu_gateway_primary"
+          }
+        ],
+        "service_ids": [
+          "svc_eu_gateway_primary"
+        ],
+        "source": "loopback_http"
+      },
+      "candidate": {
+        "active_decision_id": "DEC-2026-409",
+        "active_policy_summary": "STRICT FREEZE: EU payment streams must remain strictly within GDPR-compliant EU regions due to BaFin Audit #88.",
+        "candidate_service_id": "svc_eu_zurich_dr",
+        "expert_handle": "@sarah.chen",
+        "expertise_score": 0.98,
+        "forbids_non_eu": true,
+        "historical_success_rate": 0.89,
+        "playbook_id": "pb_reroute_eu_sovereign",
+        "playbook_name": "Intra-EU Sovereign DR Failover",
+        "policy_context": "7fb42df7abd70a8bda97e1d316e540ac77c4fd8577c2a83ca00961d6aefd613e",
+        "policy_source": "https://slack.internal/archives/C02compliance/p1760480000",
+        "superseded_decision_id": "DEC-2026-101"
+      },
+      "created_at": 1792326731.5731232,
+      "id": "recovery_bf66d5bcfb0243f6bc78912c52e41981",
+      "pipeline_id": "pipeline_eu_payments",
+      "runtime": {
+        "execution_count": 4,
+        "instance_id": "a8655ef2655354d198f5207472ab8160",
+        "revision": 4,
+        "target": "svc_eu_gateway_primary"
+      },
+      "simulation": {
+        "capacity_checks": [
+          {
+            "capacity_passed": true,
+            "current_load_pct": 50,
+            "lock_blocked": false,
+            "max_throughput_tps": 20000,
+            "projected_load_pct": 50,
+            "reason": "within capacity",
+            "region": "eu-central-1",
+            "required_throughput_tps": 4500.0,
+            "service_id": "svc_core_ledger"
+          },
+          {
+            "capacity_passed": true,
+            "current_load_pct": 31,
+            "lock_blocked": false,
+            "max_throughput_tps": 12000,
+            "projected_load_pct": 68.5,
+            "reason": "within capacity",
+            "region": "eu-central-1",
+            "required_throughput_tps": 4500.0,
+            "service_id": "svc_eu_zurich_dr"
+          },
+          {
+            "capacity_passed": true,
+            "current_load_pct": 65,
+            "lock_blocked": false,
+            "max_throughput_tps": 20000,
+            "projected_load_pct": 65,
+            "reason": "within capacity",
+            "region": "eu-central-1",
+            "required_throughput_tps": 4500.0,
+            "service_id": "svc_merchant_checkout"
+          }
+        ],
+        "capacity_passed": true,
+        "chaos_scenario": null,
+        "dependency_paths": [
+          {
+            "projected_e2e_latency_ms": 140,
+            "service_path": [
+              "svc_merchant_checkout",
+              "svc_core_ledger",
+              "pipeline_eu_payments"
+            ]
+          },
+          {
+            "projected_e2e_latency_ms": 100,
+            "service_path": [
+              "svc_core_ledger",
+              "pipeline_eu_payments"
+            ]
+          }
+        ],
+        "governing_decision": "DEC-2026-409",
+        "governing_decisions": [
+          "DEC-2026-409"
+        ],
+        "incident_id": "recovery_bf66d5bcfb0243f6bc78912c52e41981",
+        "observed_pipeline_latency_ms": 1420,
+        "penalty_at_risk_usd": 15000,
+        "pipeline_id": "pipeline_eu_payments",
+        "policy_checks": [
+          {
+            "author_handle": null,
+            "decision_id": "DEC-2026-409",
+            "forbids_non_eu": true,
+            "source_url": "https://slack.internal/archives/C02compliance/p1760480000",
+            "summary": "STRICT FREEZE: EU payment streams must remain strictly within GDPR-compliant EU regions due to BaFin Audit #88.",
+            "target_id": "pipeline_eu_payments",
+            "traffic_blocked": false
+          }
+        ],
+        "policy_violation": false,
+        "projected_e2e_latency_ms": 140,
+        "region": "eu-central-1",
+        "rejection_memory": [],
+        "rejection_reasons": [],
+        "required_throughput_tps": 4500.0,
+        "shadow_graph_id": "shadow_sim_0fce0571",
+        "shadow_snapshot": {
+          "edges": [
+            {
+              "id": "0",
+              "properties": {
+                "simulated": true
+              },
+              "source": "0",
+              "target": "1",
+              "type": "ROUTES_THROUGH"
+            },
+            {
+              "id": "1",
+              "properties": {},
+              "source": "1",
+              "target": "2",
+              "type": "LOCATED_IN"
+            },
+            {
+              "id": "2",
+              "properties": {
+                "criticality": 0.9
+              },
+              "source": "3",
+              "target": "4",
+              "type": "DEPENDS_ON"
+            },
+            {
+              "id": "3",
+              "properties": {
+                "criticality": 0.95
+              },
+              "source": "4",
+              "target": "0",
+              "type": "DEPENDS_ON"
+            },
+            {
+              "id": "4",
+              "properties": {},
+              "source": "3",
+              "target": "5",
+              "type": "BOUND_BY"
+            },
+            {
+              "id": "5",
+              "properties": {},
+              "source": "6",
+              "target": "0",
+              "type": "GOVERNS"
+            }
+          ],
+          "graph_id": "shadow_sim_0fce0571",
+          "nodes": [
+            {
+              "id": "0",
+              "labels": [
+                "DataPipeline"
+              ],
+              "properties": {
+                "id": "pipeline_eu_payments",
+                "latency_ms": 1420,
+                "memory_sequence": 1,
+                "name": "EU Real-Time Payment Stream",
+                "status": "SIMULATED_REROUTE",
+                "throughput_tps": 4500
+              }
+            },
+            {
+              "id": "1",
+              "labels": [
+                "Service"
+              ],
+              "properties": {
+                "base_latency_ms": 70,
+                "capacity_passed": true,
+                "current_load_pct": 31,
+                "id": "svc_eu_zurich_dr",
+                "max_throughput_tps": 12000,
+                "name": "EU Sovereign DR Node",
+                "projected_load_pct": 68.5,
+                "region": "eu-central-1",
+                "status": "HEALTHY",
+                "tier": 1
+              }
+            },
+            {
+              "id": "2",
+              "labels": [
+                "Region"
+              ],
+              "properties": {
+                "gdpr_compliant": true,
+                "id": "eu-central-1",
+                "name": "Frankfurt EU"
+              }
+            },
+            {
+              "id": "3",
+              "labels": [
+                "Service"
+              ],
+              "properties": {
+                "base_latency_ms": 40,
+                "capacity_passed": true,
+                "current_load_pct": 65,
+                "id": "svc_merchant_checkout",
+                "max_throughput_tps": 20000,
+                "name": "Merchant Checkout API",
+                "projected_load_pct": 65,
+                "region": "eu-central-1",
+                "status": "AT_RISK",
+                "tier": 1
+              }
+            },
+            {
+              "id": "4",
+              "labels": [
+                "Service"
+              ],
+              "properties": {
+                "base_latency_ms": 30,
+                "capacity_passed": true,
+                "current_load_pct": 50,
+                "id": "svc_core_ledger",
+                "max_throughput_tps": 20000,
+                "name": "Global Settlement Ledger",
+                "projected_load_pct": 50,
+                "region": "eu-central-1",
+                "status": "HEALTHY",
+                "tier": 0
+              }
+            },
+            {
+              "id": "5",
+              "labels": [
+                "SLA"
+              ],
+              "properties": {
+                "client_tier": "Enterprise FinTech",
+                "id": "sla_enterprise_eu",
+                "max_allowed_latency_ms": 250,
+                "penalty_per_min_usd": 15000
+              }
+            },
+            {
+              "id": "6",
+              "labels": [
+                "Decision"
+              ],
+              "properties": {
+                "active": true,
+                "forbids_non_eu": true,
+                "id": "DEC-2026-409",
+                "source_type": "Slack_Thread",
+                "source_url": "https://slack.internal/archives/C02compliance/p1760480000",
+                "summary": "STRICT FREEZE: EU payment streams must remain strictly within GDPR-compliant EU regions due to BaFin Audit #88.",
+                "timestamp": 1760480000
+              }
+            }
+          ]
+        },
+        "simulation_approved": true,
+        "sla_checks": [
+          {
+            "min_throughput_tps": 0,
+            "penalty_at_risk_usd": 15000,
+            "projected_e2e_latency_ms": 140,
+            "service_path": [
+              "svc_merchant_checkout",
+              "svc_core_ledger",
+              "pipeline_eu_payments"
+            ],
+            "sla_id": "sla_enterprise_eu",
+            "sla_limit_ms": 250,
+            "sla_passed": true
+          }
+        ],
+        "sla_limit_ms": 250,
+        "sla_passed": true,
+        "target_name": "EU Sovereign DR Node",
+        "target_service": "svc_eu_zurich_dr",
+        "traffic_freeze_violation": false,
+        "verified_inputs": {
+          "canonical_edges": "[[0, 2, 3, \"ROUTES_THROUGH\", [[\"active\", true], [\"load_contribution_pct\", 37.5], [\"weight\", 1]]], [1, 2, 4, \"CANDIDATE_FAILOVER\", [[\"route_id\", \"route_us_01\"]]], [2, 2, 5, \"CANDIDATE_FAILOVER\", [[\"route_id\", \"route_eu_02\"]]], [3, 3, 0, \"LOCATED_IN\", []], [4, 4, 1, \"LOCATED_IN\", []], [5, 5, 0, \"LOCATED_IN\", []], [6, 6, 2, \"DEPENDS_ON\", [[\"criticality\", 0.95]]], [7, 7, 6, \"DEPENDS_ON\", [[\"criticality\", 0.9]]], [8, 7, 8, \"BOUND_BY\", []], [11, 12, 11, \"SUPERSEDES\", [[\"reason\", \"Regulatory Audit #88\"]]], [12, 11, 2, \"GOVERNS\", []], [13, 12, 2, \"GOVERNS\", []]]",
+          "canonical_nodes": "[[0, [\"Region\"], [[\"gdpr_compliant\", true], [\"id\", \"eu-central-1\"], [\"name\", \"Frankfurt EU\"]]], [1, [\"Region\"], [[\"gdpr_compliant\", false], [\"id\", \"us-east-1\"], [\"name\", \"N. Virginia US\"]]], [2, [\"DataPipeline\"], [[\"id\", \"pipeline_eu_payments\"], [\"latency_ms\", 1420], [\"memory_sequence\", 1], [\"name\", \"EU Real-Time Payment Stream\"], [\"status\", \"DEGRADED\"], [\"throughput_tps\", 4500]]], [3, [\"Service\"], [[\"base_latency_ms\", 95], [\"current_load_pct\", 94], [\"id\", \"svc_eu_gateway_primary\"], [\"max_throughput_tps\", 12000], [\"name\", \"EU Payment Gateway Primary\"], [\"region\", \"eu-central-1\"], [\"status\", \"CONGESTED\"], [\"tier\", 1]]], [4, [\"Service\"], [[\"base_latency_ms\", 45], [\"current_load_pct\", 22], [\"id\", \"svc_us_failover_fast\"], [\"max_throughput_tps\", 20000], [\"name\", \"US East Fast Failover Node\"], [\"region\", \"us-east-1\"], [\"status\", \"HEALTHY\"], [\"tier\", 1]]], [5, [\"Service\"], [[\"base_latency_ms\", 70], [\"current_load_pct\", 31], [\"id\", \"svc_eu_zurich_dr\"], [\"max_throughput_tps\", 12000], [\"name\", \"EU Sovereign DR Node\"], [\"region\", \"eu-central-1\"], [\"status\", \"HEALTHY\"], [\"tier\", 1]]], [6, [\"Service\"], [[\"base_latency_ms\", 30], [\"current_load_pct\", 50], [\"id\", \"svc_core_ledger\"], [\"max_throughput_tps\", 20000], [\"name\", \"Global Settlement Ledger\"], [\"region\", \"eu-central-1\"], [\"status\", \"HEALTHY\"], [\"tier\", 0]]], [7, [\"Service\"], [[\"base_latency_ms\", 40], [\"current_load_pct\", 65], [\"id\", \"svc_merchant_checkout\"], [\"max_throughput_tps\", 20000], [\"name\", \"Merchant Checkout API\"], [\"region\", \"eu-central-1\"], [\"status\", \"AT_RISK\"], [\"tier\", 1]]], [8, [\"SLA\"], [[\"client_tier\", \"Enterprise FinTech\"], [\"id\", \"sla_enterprise_eu\"], [\"max_allowed_latency_ms\", 250], [\"penalty_per_min_usd\", 15000]]], [11, [\"Decision\"], [[\"active\", false], [\"forbids_non_eu\", false], [\"id\", \"DEC-2026-101\"], [\"source_type\", \"Jira_RFC\"], [\"source_url\", \"https://jira.internal/browse/ARCH-101\"], [\"summary\", \"Allow cross-Atlantic failover to us-east-1 during EU traffic spikes.\"], [\"timestamp\", 1759276800]]], [12, [\"Decision\"], [[\"active\", true], [\"forbids_non_eu\", true], [\"id\", \"DEC-2026-409\"], [\"source_type\", \"Slack_Thread\"], [\"source_url\", \"https://slack.internal/archives/C02compliance/p1760480000\"], [\"summary\", \"STRICT FREEZE: EU payment streams must remain strictly within GDPR-compliant EU regions due to BaFin Audit #88.\"], [\"timestamp\", 1760480000]]]]",
+          "edges": [
+            [
+              0,
+              2,
+              3,
+              "ROUTES_THROUGH",
+              {
+                "active": true,
+                "load_contribution_pct": 37.5,
+                "weight": 1.0
+              }
+            ],
+            [
+              1,
+              2,
+              4,
+              "CANDIDATE_FAILOVER",
+              {
+                "route_id": "route_us_01"
+              }
+            ],
+            [
+              2,
+              2,
+              5,
+              "CANDIDATE_FAILOVER",
+              {
+                "route_id": "route_eu_02"
+              }
+            ],
+            [
+              3,
+              3,
+              0,
+              "LOCATED_IN",
+              {}
+            ],
+            [
+              4,
+              4,
+              1,
+              "LOCATED_IN",
+              {}
+            ],
+            [
+              5,
+              5,
+              0,
+              "LOCATED_IN",
+              {}
+            ],
+            [
+              6,
+              6,
+              2,
+              "DEPENDS_ON",
+              {
+                "criticality": 0.95
+              }
+            ],
+            [
+              7,
+              7,
+              6,
+              "DEPENDS_ON",
+              {
+                "criticality": 0.9
+              }
+            ],
+            [
+              8,
+              7,
+              8,
+              "BOUND_BY",
+              {}
+            ],
+            [
+              11,
+              12,
+              11,
+              "SUPERSEDES",
+              {
+                "reason": "Regulatory Audit #88"
+              }
+            ],
+            [
+              12,
+              11,
+              2,
+              "GOVERNS",
+              {}
+            ],
+            [
+              13,
+              12,
+              2,
+              "GOVERNS",
+              {}
+            ]
+          ],
+          "nodes": [
+            [
+              0,
+              [
+                "Region"
+              ],
+              {
+                "gdpr_compliant": true,
+                "id": "eu-central-1",
+                "name": "Frankfurt EU"
+              }
+            ],
+            [
+              1,
+              [
+                "Region"
+              ],
+              {
+                "gdpr_compliant": false,
+                "id": "us-east-1",
+                "name": "N. Virginia US"
+              }
+            ],
+            [
+              2,
+              [
+                "DataPipeline"
+              ],
+              {
+                "id": "pipeline_eu_payments",
+                "latency_ms": 1420,
+                "memory_sequence": 1,
+                "name": "EU Real-Time Payment Stream",
+                "status": "DEGRADED",
+                "throughput_tps": 4500
+              }
+            ],
+            [
+              3,
+              [
+                "Service"
+              ],
+              {
+                "base_latency_ms": 95,
+                "current_load_pct": 94,
+                "id": "svc_eu_gateway_primary",
+                "max_throughput_tps": 12000,
+                "name": "EU Payment Gateway Primary",
+                "region": "eu-central-1",
+                "status": "CONGESTED",
+                "tier": 1
+              }
+            ],
+            [
+              4,
+              [
+                "Service"
+              ],
+              {
+                "base_latency_ms": 45,
+                "current_load_pct": 22,
+                "id": "svc_us_failover_fast",
+                "max_throughput_tps": 20000,
+                "name": "US East Fast Failover Node",
+                "region": "us-east-1",
+                "status": "HEALTHY",
+                "tier": 1
+              }
+            ],
+            [
+              5,
+              [
+                "Service"
+              ],
+              {
+                "base_latency_ms": 70,
+                "current_load_pct": 31,
+                "id": "svc_eu_zurich_dr",
+                "max_throughput_tps": 12000,
+                "name": "EU Sovereign DR Node",
+                "region": "eu-central-1",
+                "status": "HEALTHY",
+                "tier": 1
+              }
+            ],
+            [
+              6,
+              [
+                "Service"
+              ],
+              {
+                "base_latency_ms": 30,
+                "current_load_pct": 50,
+                "id": "svc_core_ledger",
+                "max_throughput_tps": 20000,
+                "name": "Global Settlement Ledger",
+                "region": "eu-central-1",
+                "status": "HEALTHY",
+                "tier": 0
+              }
+            ],
+            [
+              7,
+              [
+                "Service"
+              ],
+              {
+                "base_latency_ms": 40,
+                "current_load_pct": 65,
+                "id": "svc_merchant_checkout",
+                "max_throughput_tps": 20000,
+                "name": "Merchant Checkout API",
+                "region": "eu-central-1",
+                "status": "AT_RISK",
+                "tier": 1
+              }
+            ],
+            [
+              8,
+              [
+                "SLA"
+              ],
+              {
+                "client_tier": "Enterprise FinTech",
+                "id": "sla_enterprise_eu",
+                "max_allowed_latency_ms": 250,
+                "penalty_per_min_usd": 15000
+              }
+            ],
+            [
+              11,
+              [
+                "Decision"
+              ],
+              {
+                "active": false,
+                "forbids_non_eu": false,
+                "id": "DEC-2026-101",
+                "source_type": "Jira_RFC",
+                "source_url": "https://jira.internal/browse/ARCH-101",
+                "summary": "Allow cross-Atlantic failover to us-east-1 during EU traffic spikes.",
+                "timestamp": 1759276800
+              }
+            ],
+            [
+              12,
+              [
+                "Decision"
+              ],
+              {
+                "active": true,
+                "forbids_non_eu": true,
+                "id": "DEC-2026-409",
+                "source_type": "Slack_Thread",
+                "source_url": "https://slack.internal/archives/C02compliance/p1760480000",
+                "summary": "STRICT FREEZE: EU payment streams must remain strictly within GDPR-compliant EU regions due to BaFin Audit #88.",
+                "timestamp": 1760480000
+              }
+            ]
+          ]
+        }
+      },
+      "status": "STALE",
+      "trace": [
+        {
+          "role": "Planner",
+          "selected": "pb_reroute_eu_sovereign",
+          "tool": "recall_procedural_playbooks"
+        },
+        {
+          "approved": true,
+          "policy_decisions": [
+            "DEC-2026-409"
+          ],
+          "reasons": [],
+          "role": "RiskAuditor",
+          "tool": "simulate_shadow_failover"
+        }
+      ],
+      "updated_at": 1792326794.4144888,
+      "version": 4,
+      "reason": "Graph policy, topology or capacity changed after audit",
+      "stop_status": "STALE"
+    }
+  ],
+  "tool_calls": [
+    {
+      "tool": "get_local_recovery",
+      "status": "APPROVED"
+    },
+    {
+      "tool": "execute_local_recovery",
+      "status": "STALE"
+    }
+  ]
+}

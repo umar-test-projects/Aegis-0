@@ -32,14 +32,12 @@ fixture comparison of attempt counts, not a general recovery-time benchmark.
 Each evaluation uses disposable `aegis_test_*` graphs. Complete action, shadow
 audit, receipt and HTTP sample evidence is exported before those graphs are
 deleted. The release run's complete local artifact is
-`scratch/evaluation-release.json`; reproduce it with the command above.
+[evaluation-release.json](evidence/evaluation-release.json); reproduce it with the command above.
 
 The test suite also covers two independent MCP processes handing off an action,
 dashboard interactions, stale-runtime identity, concurrent workers, compensation
 fencing, canonical snapshots containing measured floats, and the existing
-Company Brain/Slack/reporting regressions. The independent code review's Important
-stale-worker compensation finding was reproduced and fixed with a deterministic
-regression test.
+Company Brain/Slack/reporting regressions.
 
 Observations are real loopback router/gateway requests to synthetic services.
 Dependency-path latency remains a graph model. Three request samples per recovery

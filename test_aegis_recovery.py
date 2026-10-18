@@ -110,7 +110,7 @@ def test_live_other_pending_execution_holds_pipeline_lease(recovery):
     assert runtime.client().snapshot()["execution_count"] == 0
 
 
-def test_live_triage_recall_uses_persisted_learning_and_stops_when_healthy(recovery):
+def test_live_triage_recall_uses_persisted_learning_and_stops_when_healthy(recovery, monkeypatch):
     from aegis_recovery import RecoveryCoordinator
 
     coordinator, runtime = recovery
@@ -119,6 +119,11 @@ def test_live_triage_recall_uses_persisted_learning_and_stops_when_healthy(recov
     assert result["status"] == "VERIFIED"
     restarted = RecoveryCoordinator(coordinator.engine, runtime.client())
     assert restarted.engine.recall_playbooks_and_company_brain("pipeline_eu_payments")[0]["playbook_id"] == "pb_reroute_eu_sovereign"
+    # Test the healthy-stop decision with the actual verified observation.
+    # A new wall-clock sample can legitimately breach the SLA under host load,
+    # in which case triage must attempt recovery instead of returning healthy.
+    verified_observation = result["attempts"][-1]["observation"]
+    monkeypatch.setattr(restarted.runtime, "measure", lambda: verified_observation)
     assert restarted.triage("pipeline_eu_payments")["status"] == "ALREADY_HEALTHY"
     assert runtime.client().snapshot()["execution_count"] == 1
 
